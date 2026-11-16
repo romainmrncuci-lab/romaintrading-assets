@@ -212,7 +212,7 @@ def chart(a, W=300, H=230):
     line('e8', '#5BE9A8', 1.4)
     for i, r in enumerate(rows):
         o, h, l, c = r[1:5]
-        up = c >= o; col = '#00E27F' if up else '#FF2D46'
+        up = c >= o; col = '#F2F0FF' if up else '#8B5CF6'
         s.append(f'<line x1="{X(i):.1f}" x2="{X(i):.1f}" y1="{Y(h):.1f}" y2="{Y(l):.1f}" stroke="{col}" stroke-width="1"/>')
         y0, y1 = sorted((Y(o), Y(c)))
         s.append(f'<rect x="{X(i) - bw / 2:.1f}" y="{y0:.1f}" width="{bw:.1f}" height="{max(y1 - y0, 1):.1f}" fill="{col}"/>')
