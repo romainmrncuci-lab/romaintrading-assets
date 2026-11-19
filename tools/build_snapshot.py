@@ -4,12 +4,16 @@
 Usage: python3 build_snapshot.py map.json out.json
 map.json: {"XLK": "/path/to/saved/tool/result.txt", ..., "GOLD": ..., "VIX": ..., "US10Y": ...}
 Each path is a tool result saved to a file (Twelve Data CSV, FMP JSON list, Alpha Vantage CSV or preview JSON).
-Writes {"rows": [{"series", "date", "value"}...]} keeping the last 140 sessions of each series, oldest first.
+Writes {"rows": [{"series", "date", "value"}...]} keeping the last 270 sessions of each series, oldest first.
 """
 import csv, datetime, io, json, sys
 
-KEEP = 140
+KEEP = 270
 EXPECTED = ["XLK", "XLC", "XLY", "XLF", "XLI", "XLB", "XLE", "XLV", "XLP", "XLU", "XLRE", "SPY", "UUP", "USO", "GOLD", "VIX", "US10Y"]
+# Séries complémentaires (tendance des indices, industries) : utilisées si présentes, sinon ignorées avec un avertissement
+OPTIONAL = ["QQQ", "IWM", "PBJ", "IHI", "PPH", "IHF", "XBI", "ICLN", "NLR", "SRVR", "KIE", "KBE", "KRE", "IAI", "BLOK",
+            "ITB", "PEJ", "XRT", "GDX", "XME", "LIT", "SIL", "REMX", "COPX", "JETS", "IYT", "ITA", "PAVE", "OIH", "TAN",
+            "XOP", "IGV", "SKYY", "CIBR", "BOTZ", "QTUM", "SMH", "FDN", "ESPO"]
 
 
 def parse(text):
@@ -57,17 +61,28 @@ def main():
         sys.exit("missing series: " + ", ".join(missing))
     rows, report = [], []
     today = datetime.date.today()
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     # Séance US en cours (avant 21h15 UTC) : on ignore la barre du jour, incomplète
     cutoff = today if now.hour * 60 + now.minute < 21 * 60 + 15 else today + datetime.timedelta(days=1)
-    for key in EXPECTED:
-        pts = sorted(set(p for p in parse(open(mapping[key]).read()) if p[0] < cutoff.isoformat()))
+    for key in EXPECTED + OPTIONAL:
+        if key not in mapping:
+            report.append(f"{key}: ABSENT (ignoré)")
+            continue
+        try:
+            pts = sorted(dict(p for p in parse(open(mapping[key]).read()) if p[0] < cutoff.isoformat()).items())
+        except Exception as err:
+            if key in OPTIONAL:
+                report.append(f"{key}: ERREUR {err} (ignoré)")
+                continue
+            raise
         pts = pts[-KEEP:]
         last = datetime.date.fromisoformat(pts[-1][0])
-        if len(pts) < 130:
-            sys.exit(f"{key}: only {len(pts)} rows")
-        if (today - last).days > 7:
-            sys.exit(f"{key}: latest date {last} is stale")
+        problem = f"only {len(pts)} rows" if len(pts) < 130 else f"latest date {last} is stale" if (today - last).days > 7 else None
+        if problem:
+            if key in OPTIONAL:
+                report.append(f"{key}: {problem} (ignoré)")
+                continue
+            sys.exit(f"{key}: {problem}")
         report.append(f"{key}: {len(pts)} rows, {pts[0][0]} -> {pts[-1][0]}, last {pts[-1][1]}")
         rows += [{"series": key, "date": d, "value": v} for d, v in pts]
     json.dump({"rows": rows}, open(sys.argv[2], "w"), separators=(",", ":"))
